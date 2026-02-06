@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,23 +8,74 @@ import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import OrderForm from '@/components/OrderForm';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 const Index = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const [currentView, setCurrentView] = useState<'home' | 'calculator' | 'pickup' | 'tracking' | 'about' | 'contacts' | 'account' | 'admin'>('home');
   const [weight, setWeight] = useState('');
   const [length, setLength] = useState('');
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
   const [calculatedPrice, setCalculatedPrice] = useState<number | null>(null);
+  const [showOrderForm, setShowOrderForm] = useState(false);
+  
+  const [pickupPoints, setPickupPoints] = useState<any[]>([]);
+  const [deliveryPoints, setDeliveryPoints] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [registerData, setRegisterData] = useState({ email: '', password: '', full_name: '', phone: '' });
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [trackedOrder, setTrackedOrder] = useState<any>(null);
+
+  useEffect(() => {
+    loadData();
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const data = await api.getData();
+      setPickupPoints(data.pickup_points || []);
+      setDeliveryPoints(data.delivery_points || []);
+      setStatuses(data.statuses || []);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
+
+  const loadOrders = async () => {
+    try {
+      const data = await api.getOrders();
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.is_admin) {
+      loadOrders();
+    }
+  }, [user]);
 
   const calculatePrice = () => {
     const w = parseFloat(weight);
-    if (isNaN(w) || w <= 0) return;
+    if (isNaN(w) || w <= 0) {
+      toast.error('Введите корректный вес');
+      return;
+    }
     
     const pricePerKg = w >= 10 ? 100 : 120;
-    const basePrice = w * pricePerKg;
-    
     const l = parseFloat(length) || 0;
     const wi = parseFloat(width) || 0;
     const h = parseFloat(height) || 0;
@@ -36,31 +87,98 @@ const Index = () => {
     setCalculatedPrice(Math.round(finalPrice));
   };
 
-  const pickupPoints = [
-    { id: 1, name: 'Ozon', city: 'Москва', address: 'ул. Примерная, 1' },
-    { id: 2, name: 'Wildberries', city: 'Москва', address: 'пр. Центральный, 5' },
-    { id: 3, name: 'Яндекс Маркет', city: 'Санкт-Петербург', address: 'ул. Невская, 10' },
-    { id: 4, name: 'Почта России', city: 'Москва', address: 'ул. Почтовая, 3' },
-    { id: 5, name: 'Boxberry', city: 'Москва', address: 'ул. Курьерская, 7' },
-    { id: 6, name: 'Автодок', city: 'Санкт-Петербург', address: 'ул. Автомобильная, 12' },
-  ];
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const result = await api.login(loginEmail, loginPassword);
+      if (result.success) {
+        setUser(result.user);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        localStorage.setItem('token', result.token);
+        toast.success('Вход выполнен успешно!');
+        if (result.user.is_admin) {
+          setCurrentView('admin');
+        } else {
+          setCurrentView('home');
+        }
+      } else {
+        toast.error(result.error || 'Ошибка входа');
+      }
+    } catch (error) {
+      toast.error('Ошибка подключения к серверу');
+    }
+  };
 
-  const deliveryPoints = [
-    { id: 1, name: 'Сухум', address: 'ул. Центральная, 5' },
-    { id: 2, name: 'Гагра', address: 'ул. Приморская, 8' },
-    { id: 3, name: 'Гудаута', address: 'ул. Ленина, 15' },
-  ];
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const result = await api.register(registerData.email, registerData.password, registerData.full_name, registerData.phone);
+      if (result.success) {
+        setUser(result.user);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        localStorage.setItem('token', result.token);
+        toast.success('Регистрация успешна!');
+        setCurrentView('home');
+      } else {
+        toast.error(result.error || 'Ошибка регистрации');
+      }
+    } catch (error) {
+      toast.error('Ошибка подключения к серверу');
+    }
+  };
 
-  const orders = [
-    { id: '#12345', status: 'В пути', date: '05.02.2026', from: 'Ozon Москва', to: 'Сухум' },
-    { id: '#12344', status: 'Доставлено', date: '03.02.2026', from: 'Wildberries Москва', to: 'Гагра' },
-    { id: '#12343', status: 'Обработка', date: '06.02.2026', from: 'Яндекс Маркет СПб', to: 'Гудаута' },
-  ];
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    setCurrentView('home');
+    toast.success('Вы вышли из системы');
+  };
+
+  const handleTrackOrder = async () => {
+    if (!trackingNumber.trim()) {
+      toast.error('Введите номер заказа');
+      return;
+    }
+    try {
+      const result = await api.getOrderByNumber(trackingNumber);
+      if (result.error) {
+        toast.error(result.error);
+        setTrackedOrder(null);
+      } else {
+        setTrackedOrder(result);
+        toast.success('Заказ найден');
+      }
+    } catch (error) {
+      toast.error('Ошибка поиска заказа');
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: number, statusId: number) => {
+    try {
+      await api.updateOrderStatus(orderId, statusId);
+      toast.success('Статус обновлён');
+      loadOrders();
+    } catch (error) {
+      toast.error('Ошибка обновления статуса');
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!confirm('Удалить заказ?')) return;
+    try {
+      await api.deleteOrder(orderId);
+      toast.success('Заказ удалён');
+      loadOrders();
+    } catch (error) {
+      toast.error('Ошибка удаления заказа');
+    }
+  };
 
   const Navigation = () => (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentView('home')}>
           <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
             <Icon name="Package" className="text-white" size={24} />
           </div>
@@ -77,15 +195,17 @@ const Index = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {isLoggedIn ? (
+          {user ? (
             <>
-              <Button onClick={() => setCurrentView('account')} variant="outline">
-                <Icon name="User" size={18} className="mr-2" />
-                Личный кабинет
-              </Button>
-              <Button onClick={() => setCurrentView('admin')} className="gradient-primary text-white">
-                <Icon name="Settings" size={18} className="mr-2" />
-                Админ
+              {user.is_admin && (
+                <Button onClick={() => setCurrentView('admin')} variant="outline">
+                  <Icon name="Settings" size={18} className="mr-2" />
+                  Админ
+                </Button>
+              )}
+              <Button onClick={handleLogout} variant="outline">
+                <Icon name="LogOut" size={18} className="mr-2" />
+                Выйти
               </Button>
             </>
           ) : (
@@ -137,64 +257,37 @@ const Index = () => {
                   <Icon name="Calculator" size={20} className="mr-2" />
                   Рассчитать стоимость
                 </Button>
-                <Button onClick={() => setCurrentView('pickup')} size="lg" variant="outline">
-                  <Icon name="MapPin" size={20} className="mr-2" />
-                  Пункты выдачи
-                </Button>
+                <Dialog open={showOrderForm} onOpenChange={setShowOrderForm}>
+                  <DialogTrigger asChild>
+                    <Button size="lg" variant="outline">
+                      <Icon name="Package" size={20} className="mr-2" />
+                      Оформить заказ
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Оформление заказа</DialogTitle>
+                    </DialogHeader>
+                    <OrderForm
+                      pickupPoints={pickupPoints}
+                      deliveryPoints={deliveryPoints}
+                      onSuccess={() => {
+                        setShowOrderForm(false);
+                        toast.success('Заказ успешно создан!');
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
             <div className="animate-scale-in">
               <div className="relative">
                 <div className="absolute inset-0 gradient-primary rounded-3xl blur-3xl opacity-20"></div>
-                <Card className="relative border-2 border-primary/20">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Icon name="Package" className="text-primary" />
-                      Быстрое оформление
-                    </CardTitle>
-                    <CardDescription>Создайте заказ прямо сейчас</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label>Откуда забрать</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите пункт выдачи" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {pickupPoints.map(point => (
-                            <SelectItem key={point.id} value={point.id.toString()}>
-                              {point.name} - {point.city}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Куда доставить</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите город доставки" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {deliveryPoints.map(point => (
-                            <SelectItem key={point.id} value={point.id.toString()}>
-                              {point.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Вес посылки (кг)</Label>
-                      <Input type="number" placeholder="Например: 5" />
-                    </div>
-                    <Button className="w-full gradient-primary text-white">
-                      <Icon name="Send" size={18} className="mr-2" />
-                      Оформить заказ
-                    </Button>
-                  </CardContent>
-                </Card>
+                <img
+                  src="https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=600&h=600&fit=crop"
+                  alt="Доставка"
+                  className="relative rounded-3xl shadow-2xl"
+                />
               </div>
             </div>
           </div>
@@ -208,13 +301,13 @@ const Index = () => {
             <p className="text-gray-600">Забираем посылки с популярных маркетплейсов</p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
-            {['Ozon', 'Wildberries', 'Яндекс Маркет', 'Почта России', 'Boxberry', 'Автодок'].map((partner, idx) => (
-              <Card key={idx} className="hover:shadow-lg transition-shadow cursor-pointer">
+            {pickupPoints.slice(0, 6).map((partner) => (
+              <Card key={partner.id} className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardContent className="p-6 flex flex-col items-center justify-center gap-3">
                   <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center">
                     <Icon name="Store" className="text-white" size={32} />
                   </div>
-                  <span className="font-semibold text-center">{partner}</span>
+                  <span className="font-semibold text-center">{partner.name}</span>
                 </CardContent>
               </Card>
             ))}
@@ -274,6 +367,7 @@ const Index = () => {
               <Label className="text-base mb-2 block">Вес посылки *</Label>
               <Input
                 type="number"
+                step="0.1"
                 placeholder="Введите вес в килограммах"
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
@@ -325,10 +419,27 @@ const Index = () => {
                 <div className="text-center">
                   <div className="text-sm opacity-90 mb-2">Стоимость доставки</div>
                   <div className="text-5xl font-bold mb-4">{calculatedPrice} ₽</div>
-                  <Button onClick={() => setCurrentView('home')} variant="secondary" size="lg">
-                    <Icon name="Package" size={20} className="mr-2" />
-                    Оформить заказ
-                  </Button>
+                  <Dialog open={showOrderForm} onOpenChange={setShowOrderForm}>
+                    <DialogTrigger asChild>
+                      <Button variant="secondary" size="lg">
+                        <Icon name="Package" size={20} className="mr-2" />
+                        Оформить заказ
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Оформление заказа</DialogTitle>
+                      </DialogHeader>
+                      <OrderForm
+                        pickupPoints={pickupPoints}
+                        deliveryPoints={deliveryPoints}
+                        onSuccess={() => {
+                          setShowOrderForm(false);
+                          toast.success('Заказ успешно создан!');
+                        }}
+                      />
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
             )}
@@ -358,7 +469,7 @@ const Index = () => {
             <CardContent>
               <div className="space-y-3">
                 {pickupPoints.map(point => (
-                  <div key={point.id} className="p-4 rounded-lg border hover:border-primary transition-colors cursor-pointer">
+                  <div key={point.id} className="p-4 rounded-lg border hover:border-primary transition-colors">
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-lg gradient-primary flex items-center justify-center flex-shrink-0">
                         <Icon name="Store" className="text-white" size={20} />
@@ -386,7 +497,7 @@ const Index = () => {
             <CardContent>
               <div className="space-y-3">
                 {deliveryPoints.map(point => (
-                  <div key={point.id} className="p-4 rounded-lg border hover:border-accent transition-colors cursor-pointer">
+                  <div key={point.id} className="p-4 rounded-lg border hover:border-accent transition-colors">
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-lg gradient-accent flex items-center justify-center flex-shrink-0">
                         <Icon name="Home" className="text-white" size={20} />
@@ -402,23 +513,6 @@ const Index = () => {
             </CardContent>
           </Card>
         </div>
-
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Icon name="Map" className="text-primary" />
-              Карта доставки по Абхазии
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="aspect-video bg-gradient-to-br from-primary/10 to-accent/10 rounded-xl flex items-center justify-center">
-              <div className="text-center">
-                <Icon name="Map" className="text-primary mx-auto mb-4" size={64} />
-                <p className="text-gray-600">Интерактивная карта с пунктами выдачи</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
@@ -434,8 +528,13 @@ const Index = () => {
         <Card className="mb-8">
           <CardContent className="pt-6">
             <div className="flex gap-4">
-              <Input placeholder="Введите номер заказа (например: #12345)" className="flex-1" />
-              <Button className="gradient-primary text-white">
+              <Input
+                placeholder="Введите номер заказа (например: #20260206ABC123)"
+                value={trackingNumber}
+                onChange={(e) => setTrackingNumber(e.target.value)}
+                className="flex-1"
+              />
+              <Button onClick={handleTrackOrder} className="gradient-primary text-white">
                 <Icon name="Search" size={20} className="mr-2" />
                 Найти
               </Button>
@@ -443,38 +542,56 @@ const Index = () => {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          {orders.map(order => (
-            <Card key={order.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg gradient-primary flex items-center justify-center">
-                      <Icon name="Package" className="text-white" size={24} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-lg">{order.id}</div>
-                      <div className="text-sm text-gray-600">{order.date}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-sm text-gray-600">Маршрут</div>
-                      <div className="font-medium">{order.from} → {order.to}</div>
-                    </div>
-                    <Badge className={
-                      order.status === 'Доставлено' ? 'bg-green-500' :
-                      order.status === 'В пути' ? 'bg-blue-500' :
-                      'bg-orange-500'
-                    }>
-                      {order.status}
-                    </Badge>
-                  </div>
+        {trackedOrder && (
+          <Card className="animate-fade-in">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Заказ {trackedOrder.order_number}</span>
+                <Badge className={`bg-${trackedOrder.status_color}-500`}>
+                  {trackedOrder.status_name}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Получатель</Label>
+                  <p className="font-medium">{trackedOrder.full_name}</p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <div>
+                  <Label>Телефон</Label>
+                  <p className="font-medium">{trackedOrder.phone}</p>
+                </div>
+                <div>
+                  <Label>Откуда</Label>
+                  <p className="font-medium">{trackedOrder.pickup_point_name}, {trackedOrder.pickup_city}</p>
+                </div>
+                <div>
+                  <Label>Куда</Label>
+                  <p className="font-medium">
+                    {trackedOrder.delivery_type === 'pickup' 
+                      ? trackedOrder.delivery_point_name 
+                      : trackedOrder.delivery_address}
+                  </p>
+                </div>
+                <div>
+                  <Label>Вес</Label>
+                  <p className="font-medium">{trackedOrder.weight} кг</p>
+                </div>
+                <div>
+                  <Label>Стоимость</Label>
+                  <p className="font-medium text-primary">{trackedOrder.price} ₽</p>
+                </div>
+              </div>
+              {trackedOrder.qr_screenshot_url && (
+                <div>
+                  <Label>QR-код заказа</Label>
+                  <img src={trackedOrder.qr_screenshot_url} alt="QR код" className="mt-2 max-w-xs rounded-lg border" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -561,62 +678,26 @@ const Index = () => {
           </Card>
 
           <div className="space-y-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-lg gradient-primary flex items-center justify-center">
-                    <Icon name="Phone" className="text-white" size={24} />
+            {[
+              { icon: 'Phone', title: 'Телефон', text: '+7 (XXX) XXX-XX-XX' },
+              { icon: 'Mail', title: 'Email', text: 'info@expressabkhazia.ru' },
+              { icon: 'MapPin', title: 'Офис', text: 'г. Сухум, ул. Центральная, 5' },
+              { icon: 'Clock', title: 'Режим работы', text: 'Пн-Пт: 9:00 - 18:00' },
+            ].map((item, idx) => (
+              <Card key={idx}>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-lg gradient-primary flex items-center justify-center">
+                      <Icon name={item.icon as any} className="text-white" size={24} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold mb-1">{item.title}</h3>
+                      <p className="text-gray-600">{item.text}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold mb-1">Телефон</h3>
-                    <p className="text-gray-600">+7 (XXX) XXX-XX-XX</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-lg gradient-primary flex items-center justify-center">
-                    <Icon name="Mail" className="text-white" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold mb-1">Email</h3>
-                    <p className="text-gray-600">info@expressabkhazia.ru</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-lg gradient-primary flex items-center justify-center">
-                    <Icon name="MapPin" className="text-white" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold mb-1">Офис</h3>
-                    <p className="text-gray-600">г. Сухум, ул. Центральная, 5</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-lg gradient-primary flex items-center justify-center">
-                    <Icon name="Clock" className="text-white" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold mb-1">Режим работы</h3>
-                    <p className="text-gray-600">Пн-Пт: 9:00 - 18:00</p>
-                    <p className="text-gray-600">Сб-Вс: 10:00 - 16:00</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </div>
@@ -638,42 +719,80 @@ const Index = () => {
                 <TabsTrigger value="register">Регистрация</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="login" className="space-y-4">
-                <div>
-                  <Label>Email</Label>
-                  <Input type="email" placeholder="your@email.com" />
-                </div>
-                <div>
-                  <Label>Пароль</Label>
-                  <Input type="password" placeholder="••••••••" />
-                </div>
-                <Button onClick={() => setIsLoggedIn(true)} className="w-full gradient-primary text-white">
-                  <Icon name="LogIn" size={18} className="mr-2" />
-                  Войти
-                </Button>
+              <TabsContent value="login">
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      required
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                  <div>
+                    <Label>Пароль</Label>
+                    <Input
+                      type="password"
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <Button type="submit" className="w-full gradient-primary text-white">
+                    <Icon name="LogIn" size={18} className="mr-2" />
+                    Войти
+                  </Button>
+                </form>
               </TabsContent>
               
-              <TabsContent value="register" className="space-y-4">
-                <div>
-                  <Label>Имя</Label>
-                  <Input placeholder="Ваше имя" />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input type="email" placeholder="your@email.com" />
-                </div>
-                <div>
-                  <Label>Телефон</Label>
-                  <Input placeholder="+7 (XXX) XXX-XX-XX" />
-                </div>
-                <div>
-                  <Label>Пароль</Label>
-                  <Input type="password" placeholder="••••••••" />
-                </div>
-                <Button onClick={() => setIsLoggedIn(true)} className="w-full gradient-primary text-white">
-                  <Icon name="UserPlus" size={18} className="mr-2" />
-                  Зарегистрироваться
-                </Button>
+              <TabsContent value="register">
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <div>
+                    <Label>Имя</Label>
+                    <Input
+                      required
+                      value={registerData.full_name}
+                      onChange={(e) => setRegisterData({ ...registerData, full_name: e.target.value })}
+                      placeholder="Ваше имя"
+                    />
+                  </div>
+                  <div>
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      required
+                      value={registerData.email}
+                      onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                  <div>
+                    <Label>Телефон</Label>
+                    <Input
+                      required
+                      value={registerData.phone}
+                      onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value })}
+                      placeholder="+7 (XXX) XXX-XX-XX"
+                    />
+                  </div>
+                  <div>
+                    <Label>Пароль</Label>
+                    <Input
+                      type="password"
+                      required
+                      value={registerData.password}
+                      onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <Button type="submit" className="w-full gradient-primary text-white">
+                    <Icon name="UserPlus" size={18} className="mr-2" />
+                    Зарегистрироваться
+                  </Button>
+                </form>
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -682,136 +801,165 @@ const Index = () => {
     </div>
   );
 
-  const AdminView = () => (
-    <div className="min-h-screen pt-32 pb-20 px-4">
-      <div className="container mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Панель администратора</h1>
-          <p className="text-gray-600">Управление заказами, пунктами выдачи и статусами</p>
+  const AdminView = () => {
+    if (!user?.is_admin) {
+      return (
+        <div className="min-h-screen pt-32 pb-20 px-4">
+          <div className="container mx-auto max-w-md text-center">
+            <Icon name="Lock" className="mx-auto mb-4 text-gray-400" size={64} />
+            <h2 className="text-2xl font-bold mb-2">Доступ запрещён</h2>
+            <p className="text-gray-600 mb-6">Для доступа к админ-панели необходимо войти под учётной записью администратора</p>
+            <Button onClick={() => setCurrentView('account')} className="gradient-primary text-white">
+              Войти
+            </Button>
+          </div>
         </div>
+      );
+    }
 
-        <Tabs defaultValue="orders" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="orders">Заказы</TabsTrigger>
-            <TabsTrigger value="pickups">Пункты выдачи</TabsTrigger>
-            <TabsTrigger value="statuses">Статусы</TabsTrigger>
-          </TabsList>
+    return (
+      <div className="min-h-screen pt-32 pb-20 px-4">
+        <div className="container mx-auto">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold mb-2">Панель администратора</h1>
+            <p className="text-gray-600">Управление заказами, пунктами выдачи и статусами</p>
+          </div>
 
-          <TabsContent value="orders">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Управление заказами</CardTitle>
-                  <Button className="gradient-primary text-white">
-                    <Icon name="Plus" size={18} className="mr-2" />
-                    Добавить заказ
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {orders.map(order => (
-                    <div key={order.id} className="p-4 border rounded-lg flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <Icon name="Package" className="text-primary" size={24} />
-                        <div>
-                          <div className="font-bold">{order.id}</div>
-                          <div className="text-sm text-gray-600">{order.from} → {order.to}</div>
+          <Tabs defaultValue="orders" className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="orders">Заказы</TabsTrigger>
+              <TabsTrigger value="pickups">Пункты выдачи</TabsTrigger>
+              <TabsTrigger value="statuses">Статусы</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="orders">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Управление заказами</CardTitle>
+                    <Dialog open={showOrderForm} onOpenChange={setShowOrderForm}>
+                      <DialogTrigger asChild>
+                        <Button className="gradient-primary text-white">
+                          <Icon name="Plus" size={18} className="mr-2" />
+                          Добавить заказ
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle>Новый заказ</DialogTitle>
+                        </DialogHeader>
+                        <OrderForm
+                          pickupPoints={pickupPoints}
+                          deliveryPoints={deliveryPoints}
+                          onSuccess={() => {
+                            setShowOrderForm(false);
+                            loadOrders();
+                          }}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {orders.map(order => (
+                      <div key={order.id} className="p-4 border rounded-lg flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-4">
+                          <Icon name="Package" className="text-primary" size={24} />
+                          <div>
+                            <div className="font-bold">{order.order_number}</div>
+                            <div className="text-sm text-gray-600">{order.full_name} • {order.phone}</div>
+                            <div className="text-sm text-gray-500">
+                              {order.pickup_point_name} → {order.delivery_point_name || order.delivery_address}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Select
+                            value={order.status_id?.toString()}
+                            onValueChange={(value) => handleUpdateOrderStatus(order.id, parseInt(value))}
+                          >
+                            <SelectTrigger className="w-40">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {statuses.map(status => (
+                                <SelectItem key={status.id} value={status.id.toString()}>
+                                  {status.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <span className="font-bold text-primary">{order.price} ₽</span>
+                          <Button
+                            onClick={() => handleDeleteOrder(order.id)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            <Icon name="Trash2" size={16} />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Badge>{order.status}</Badge>
-                        <Button variant="outline" size="sm">
-                          <Icon name="Edit" size={16} className="mr-1" />
-                          Изменить
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Icon name="Trash2" size={16} />
-                        </Button>
+                    ))}
+                    {orders.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <Icon name="Package" className="mx-auto mb-4" size={48} />
+                        <p>Заказов пока нет</p>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="pickups">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
+            <TabsContent value="pickups">
+              <Card>
+                <CardHeader>
                   <CardTitle>Пункты выдачи</CardTitle>
-                  <Button className="gradient-primary text-white">
-                    <Icon name="Plus" size={18} className="mr-2" />
-                    Добавить пункт
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[...pickupPoints, ...deliveryPoints].map(point => (
-                    <div key={point.id} className="p-4 border rounded-lg flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <Icon name="MapPin" className="text-primary" size={24} />
-                        <div>
-                          <div className="font-bold">{point.name}</div>
-                          <div className="text-sm text-gray-600">{point.address}</div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {pickupPoints.map(point => (
+                      <div key={point.id} className="p-4 border rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <Icon name="MapPin" className="text-primary" size={24} />
+                          <div>
+                            <div className="font-bold">{point.name}</div>
+                            <div className="text-sm text-gray-600">{point.city} • {point.address}</div>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Button variant="outline" size="sm">
-                          <Icon name="Edit" size={16} className="mr-1" />
-                          Изменить
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Icon name="Trash2" size={16} />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="statuses">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Управление статусами</CardTitle>
-                  <Button className="gradient-primary text-white">
-                    <Icon name="Plus" size={18} className="mr-2" />
-                    Добавить статус
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {['Обработка', 'В пути', 'Прибыл на склад', 'Готов к выдаче', 'Доставлено', 'Отменён'].map((status, idx) => (
-                    <div key={idx} className="p-4 border rounded-lg flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <Icon name="Tag" className="text-primary" size={24} />
-                        <div className="font-bold">{status}</div>
+            <TabsContent value="statuses">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Статусы заказов</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {statuses.map(status => (
+                      <div key={status.id} className="p-4 border rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <Icon name="Tag" className="text-primary" size={24} />
+                          <div className="font-bold">{status.name}</div>
+                        </div>
+                        <Badge className={`bg-${status.color}-500`}>{status.color}</Badge>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Button variant="outline" size="sm">
-                          <Icon name="Edit" size={16} className="mr-1" />
-                          Изменить
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Icon name="Trash2" size={16} />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-white">

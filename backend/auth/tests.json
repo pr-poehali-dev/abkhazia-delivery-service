@@ -1,0 +1,42 @@
+{
+  "tests": [
+    {
+      "name": "Login with valid admin credentials",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "login",
+        "email": "mydavidmy@mail.ru",
+        "password": "131999davidmy"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "token": "string",
+        "user": {
+          "email": "string",
+          "is_admin": true
+        }
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Register new user",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "register",
+        "email": "test@example.com",
+        "password": "testpassword",
+        "full_name": "Test User",
+        "phone": "+7 999 999 99 99"
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "success": true,
+        "token": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
